@@ -1,0 +1,22 @@
+{
+    "name": "shahrakii/crudly",
+    "description": "Schema-driven automatic CRUD generator for Laravel.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Shahrakii\\Crudly\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Shahrakii\\Crudly\\CrudlyServiceProvider"
+            ]
+        }
+    },
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0"
+    }
+}
