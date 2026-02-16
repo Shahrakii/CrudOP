@@ -7,6 +7,10 @@ Route::group([
     'middleware' => config('crudly.middleware'),
 ], function () {
     Route::get('/check', function () {
-        return "Crudly is working!";
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Crudly is working!',
+            'version' => '1.0.0',
+        ]);
     });
 });
