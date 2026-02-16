@@ -11,10 +11,10 @@ return [
     */
 
     // Route prefix for Crudly endpoints
-    'route_prefix' => env('CRUDLY_ROUTE_PREFIX', 'admin'),
+    'route_prefix' => env('CRUDLY_ROUTE_PREFIX', 'crudly'),
 
     // Middleware to apply to Crudly routes
-    'middleware' => env('CRUDLY_MIDDLEWARE', ['web', 'auth']),
+    'middleware' => env('CRUDLY_MIDDLEWARE', ['web']),
 
     // Global filters - columns to exclude from all CRUD operations
     'global_filters' => [

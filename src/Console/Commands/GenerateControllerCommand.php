@@ -10,7 +10,6 @@ class GenerateControllerCommand extends Command
 {
     protected $signature = 'crudly:controller {name} {model} {--force}';
     protected $description = 'Generate a CRUD controller for a model';
-
     protected $files;
 
     public function __construct(Filesystem $files)
@@ -36,12 +35,14 @@ class GenerateControllerCommand extends Command
         $this->files->put($path, $stub);
 
         $this->info("✅ Controller {$name} created successfully!");
+
         return 0;
     }
 
     protected function getStub(string $name, string $model): string
     {
         $modelLower = Str::camel($model);
+        $modelPlural = Str::camel(Str::pluralStudly($model));
 
         return <<<PHP
 <?php
@@ -50,47 +51,71 @@ namespace App\Http\Controllers;
 
 use App\Models\\$model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class $name extends Controller
 {
+    protected \$table;
+    protected \$excludeColumns = ['id', 'created_at', 'updated_at', 'deleted_at'];
+
+    protected function getColumns()
+    {
+        \$all = Schema::getColumnListing(\$this->table);
+        \$filtered = [];
+        
+        foreach (\$all as \$col) {
+            if (!in_array(\$col, \$this->excludeColumns)) {
+                \$filtered[] = [
+                    'name' => \$col,
+                    'general_type' => 'string'
+                ];
+            }
+        }
+        
+        return \$filtered;
+    }
+
     public function index()
     {
-        \${$modelLower}s = $model::paginate(15);
-        return view('index', ['{$modelLower}s' => \${$modelLower}s]);
+        \${$modelPlural} = $model::paginate(15);
+        return view('index', ['{$modelPlural}' => \${$modelPlural}]);
     }
 
     public function create()
     {
-        return view('create');
+        return view('create', ['columns' => \$this->getColumns()]);
     }
 
     public function store(Request \$request)
     {
         \$validated = \$request->validate([]);
         $model::create(\$validated);
+
         return redirect()->route('index')->with('success', 'Created successfully!');
     }
 
-    public function show($model)
+    public function show($model \${$modelLower})
     {
-        return view('show', ['{$modelLower}' => \$$model]);
+        return view('show', ['{$modelLower}' => \${$modelLower}, 'columns' => \$this->getColumns()]);
     }
 
-    public function edit($model)
+    public function edit($model \${$modelLower})
     {
-        return view('edit', ['{$modelLower}' => \$$model]);
+        return view('edit', ['{$modelLower}' => \${$modelLower}, 'columns' => \$this->getColumns()]);
     }
 
-    public function update(Request \$request, $model)
+    public function update(Request \$request, $model \${$modelLower})
     {
         \$validated = \$request->validate([]);
-        \$$model->update(\$validated);
+        \${$modelLower}->update(\$validated);
+
         return redirect()->route('index')->with('success', 'Updated successfully!');
     }
 
-    public function destroy($model)
+    public function destroy($model \${$modelLower})
     {
-        \$$model->delete();
+        \${$modelLower}->delete();
+
         return redirect()->route('index')->with('success', 'Deleted successfully!');
     }
 }

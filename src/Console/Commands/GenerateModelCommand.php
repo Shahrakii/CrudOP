@@ -10,7 +10,6 @@ class GenerateModelCommand extends Command
 {
     protected $signature = 'crudly:model {name} {--force}';
     protected $description = 'Generate a model with fillable properties';
-
     protected $files;
 
     public function __construct(Filesystem $files)
@@ -35,6 +34,7 @@ class GenerateModelCommand extends Command
         $this->files->put($path, $stub);
 
         $this->info("✅ Model {$name} created successfully!");
+
         return 0;
     }
 
@@ -48,7 +48,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class {{NAME}} extends Model
+class {{ NAME }} extends Model
 {
     use HasFactory;
 
