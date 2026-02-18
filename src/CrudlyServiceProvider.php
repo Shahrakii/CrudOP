@@ -24,11 +24,6 @@ class CrudlyServiceProvider extends ServiceProvider
             __DIR__ . '/../config/crudly.php' => config_path('crudly.php'),
         ], 'crudly-config');
 
-        // Publish stubs
-        $this->publishes([
-            __DIR__ . '/../resources/stubs' => base_path('stubs'),
-        ], 'crudly-stubs');
-
         // Register commands
         if ($this->app->runningInConsole()) {
             $this->commands([

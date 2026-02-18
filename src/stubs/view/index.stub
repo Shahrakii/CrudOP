@@ -60,10 +60,10 @@
                                     <i class="fas fa-edit text-xs"></i>
                                     Edit
                                 </a>
-                                <form action="{{ route('{{ MODEL_PLURAL_SNAKE }}.destroy', ${{ MODEL_LOWER }}) }}" method="POST" class="inline">
+                                <form action="{{ route('{{ MODEL_PLURAL_SNAKE }}.destroy', ${{ MODEL_LOWER }}) }}" method="POST" class="inline delete-form">
                                     @csrf
                                     @method('DELETE')
-                                    <button onclick="return confirm('Are you sure?')" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all text-xs font-medium">
+                                    <button type="button" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all text-xs font-medium delete-btn">
                                         <i class="fas fa-trash text-xs"></i>
                                         Delete
                                     </button>
@@ -91,4 +91,50 @@
         </div>
     @endif
 </div>
+
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const form = this.closest('.delete-form');
+            
+            Swal.fire({
+                title: 'Delete {{ MODEL_LOWER }}?',
+                text: 'This action cannot be undone.',
+                icon: 'warning',
+                iconColor: '#ef4444',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'Yes, delete it!',
+                cancelButtonText: 'Cancel',
+                background: '#1f2937',
+                color: '#f3f4f6',
+                reverseButtons: true
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        title: 'Deleted!',
+                        text: '{{ MODEL_LOWER }} has been deleted.',
+                        icon: 'success',
+                        iconColor: '#10b981',
+                        background: '#1f2937',
+                        color: '#f3f4f6',
+                        timer: 2000,
+                        timerProgressBar: true
+                    });
+                    
+                    // Submit form after brief delay
+                    setTimeout(() => {
+                        form.submit();
+                    }, 500);
+                }
+            });
+        });
+    });
+});
+</script>
 @endsection
