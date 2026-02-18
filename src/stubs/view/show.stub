@@ -8,7 +8,6 @@
     <div class="space-y-6">
         {{ DISPLAY_FIELDS }}
 
-        <!-- Actions -->
         <div class="flex gap-3 pt-6 border-t border-gray-700">
             <a href="{{ route('{{ MODEL_PLURAL_SNAKE }}.edit', ${{ MODEL_LOWER }}) }}" class="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white px-6 py-3 rounded-lg font-medium transition-all shadow-lg hover:shadow-xl">
                 <i class="fas fa-edit"></i>
@@ -17,7 +16,7 @@
             <form action="{{ route('{{ MODEL_PLURAL_SNAKE }}.destroy', ${{ MODEL_LOWER }}) }}" method="POST" class="flex-1">
                 @csrf
                 @method('DELETE')
-                <button onclick="return confirm('Are you absolutely sure?')" class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-6 py-3 rounded-lg font-medium transition-all shadow-lg hover:shadow-xl">
+                <button onclick="return confirm('Are you sure?')" class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-6 py-3 rounded-lg font-medium transition-all shadow-lg hover:shadow-xl">
                     <i class="fas fa-trash"></i>
                     Delete
                 </button>

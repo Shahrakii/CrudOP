@@ -2,53 +2,31 @@
 
 namespace Shahrakii\Crudly;
 
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
-use Shahrakii\Crudly\Helpers\SchemaExtractor;
-use Shahrakii\Crudly\Helpers\ValidationGenerator;
+use Illuminate\Support\Str;
 
 class Crudly
 {
     protected $app;
-    protected $schemaExtractor;
-    protected $validationGenerator;
+    protected $globalFilters = [];
+    protected $tableFilters = [];
 
-    public function __construct($app)
+    public function __construct($app = null)
     {
         $this->app = $app;
-        $this->schemaExtractor = new SchemaExtractor();
-        $this->validationGenerator = new ValidationGenerator();
+        $this->loadConfig();
     }
 
-    /**
-     * Get all columns for a table with types
-     */
-    public function getTableColumns(string $table): array
+    protected function loadConfig()
     {
-        return $this->schemaExtractor->getTableColumns($table);
-    }
+        $this->globalFilters = config('crudly.global_filters', [
+            'id',
+            'created_at',
+            'updated_at',
+            'deleted_at',
+        ]);
 
-    /**
-     * Get filtered columns (excluding system columns)
-     */
-    public function getFilteredColumns(string $table): array
-    {
-        $columns = $this->getTableColumns($table);
-        $filters = config('crudly.global_filters', []);
-
-        return array_filter($columns, function ($col) use ($filters) {
-            return !in_array($col['name'], $filters);
-        });
-    }
-
-    /**
-     * Generate validation rules for table
-     */
-    public function getValidationRules(string $table): array
-    {
-        $columns = $this->getFilteredColumns($table);
-        return $this->validationGenerator->generateRules($columns);
+        $this->tableFilters = config('crudly.table_filters', []);
     }
 
     /**
@@ -60,35 +38,125 @@ class Crudly
     }
 
     /**
-     * Get table relationships (foreign keys)
+     * Get table columns
      */
-    public function getRelationships(string $table): array
+    public function getTableColumns(string $table): array
+    {
+        return Schema::getColumns($table);
+    }
+
+    /**
+     * Get filtered columns (exclude system columns)
+     */
+    public function getFilteredColumns(string $table): array
     {
         $columns = $this->getTableColumns($table);
-        return array_filter($columns, fn($col) => $col['general_type'] === 'foreign_key');
-    }
+        $excludeColumns = $this->getExcludeColumns($table);
 
-    /**
-     * Format column name to label
-     */
-    public static function formatColumnLabel(string $column): string
-    {
-        return ucwords(str_replace(['_', '-'], ' ', $column));
-    }
-
-    /**
-     * Get all tables in database
-     */
-    public function getAllTables(): array
-    {
-        $tables = Schema::getConnection()->getDoctrineSchemaManager()->listTableNames();
-        return array_filter($tables, function ($table) {
-            return !in_array($table, config('crudly.exclude_tables', [
-                'migrations',
-                'failed_jobs',
-                'password_resets',
-                'personal_access_tokens',
-            ]));
+        return array_filter($columns, function ($column) use ($excludeColumns) {
+            return !in_array($column['name'], $excludeColumns);
         });
+    }
+
+    /**
+     * Get columns to exclude
+     */
+    protected function getExcludeColumns(string $table): array
+    {
+        $exclude = $this->globalFilters;
+
+        // Add table-specific filters
+        if (isset($this->tableFilters[$table])) {
+            $exclude = array_merge($exclude, $this->tableFilters[$table]);
+        }
+
+        return $exclude;
+    }
+
+    /**
+     * Generate validation rules from table schema
+     */
+    public function getValidationRules(string $table): array
+    {
+        $columns = $this->getFilteredColumns($table);
+        $rules = [];
+
+        foreach ($columns as $column) {
+            $columnName = $column['name'];
+            $columnType = $column['type_name'] ?? 'string';
+
+            // Generate rule based on column type
+            $rule = $this->generateRule($columnName, $columnType, $column);
+            $rules[$columnName] = $rule;
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Generate validation rule based on column type
+     */
+    protected function generateRule(string $name, string $type, array $column): string
+    {
+        $required = !($column['nullable'] ?? true);
+        $base = $required ? 'required' : 'nullable';
+
+        // Type-based rules
+        switch ($type) {
+            case 'bigint':
+            case 'integer':
+            case 'smallint':
+            case 'int':
+                return "{$base}|integer";
+
+            case 'decimal':
+            case 'float':
+            case 'double':
+                return "{$base}|numeric";
+
+            case 'boolean':
+                return "{$base}|boolean";
+
+            case 'datetime':
+            case 'timestamp':
+            case 'datetimetz':
+                return "{$base}|date_format:Y-m-d H:i:s";
+
+            case 'date':
+                return "{$base}|date_format:Y-m-d";
+
+            case 'time':
+                return "{$base}|date_format:H:i:s";
+
+            case 'text':
+            case 'longtext':
+            case 'mediumtext':
+                return "{$base}|string";
+
+            case 'varchar':
+            case 'char':
+            case 'string':
+            default:
+                $maxLength = $column['length'] ?? 255;
+                return "{$base}|string|max:{$maxLength}";
+        }
+    }
+
+    /**
+     * Get column display type
+     */
+    public function getColumnType(string $type): string
+    {
+        return match ($type) {
+            'integer', 'bigint', 'smallint', 'int' => 'number',
+            'decimal', 'float', 'double' => 'number',
+            'boolean' => 'checkbox',
+            'datetime', 'timestamp', 'datetimetz' => 'datetime',
+            'date' => 'date',
+            'time' => 'time',
+            'text', 'longtext', 'mediumtext' => 'textarea',
+            'varchar', 'char', 'string' => 'text',
+            default => 'text',
+        };
     }
 }

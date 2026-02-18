@@ -120,13 +120,16 @@ class GenerateCrudCommand extends Command
         $modelPluralSnake = Str::snake(Str::pluralStudly($model));
         $modelLower = Str::camel($model);
 
-        // Generate image handling code
-        $imageHandlingCode = $this->generateImageHandling($this->imageFields, $modelLower);
+        // Generate image handling for STORE (no delete)
+        $imageHandlingStore = $this->generateImageHandlingForStore($this->imageFields);
+        
+        // Generate image handling for UPDATE (with delete)
+        $imageHandlingUpdate = $this->generateImageHandlingForUpdate($this->imageFields, $modelLower);
 
         $stub = $this->loadStub('controller');
         $stub = str_replace(
-            ['{{ MODEL }}', '{{ TABLE }}', '{{ RULES }}', '{{ MODEL_PLURAL_CAMEL }}', '{{ MODEL_PLURAL_SNAKE }}', '{{ MODEL_LOWER }}', '{{ IMAGE_HANDLING }}'],
-            [$model, $table, $rulesExport, $modelPlural, $modelPluralSnake, $modelLower, $imageHandlingCode],
+            ['{{ MODEL }}', '{{ TABLE }}', '{{ RULES }}', '{{ MODEL_PLURAL_CAMEL }}', '{{ MODEL_PLURAL_SNAKE }}', '{{ MODEL_LOWER }}', '{{ IMAGE_HANDLING_STORE }}', '{{ IMAGE_HANDLING_UPDATE }}'],
+            [$model, $table, $rulesExport, $modelPlural, $modelPluralSnake, $modelLower, $imageHandlingStore, $imageHandlingUpdate],
             $stub
         );
 
@@ -273,18 +276,34 @@ class GenerateCrudCommand extends Command
         throw new \RuntimeException("❌ Stub not found: stubs/{$path}.stub\n💡 Create it at: stubs/{$path}.stub");
     }
 
-    protected function generateImageHandling(array $imageFields, string $modelLower): string
+    protected function generateImageHandlingForStore(array $imageFields): string
     {
         if (empty($imageFields)) {
             return '// No image fields';
         }
 
-        $code = "// Handle image uploads\n        ";
+        $code = "// Handle image uploads (store - no need to delete old images)\n        ";
         
         foreach ($imageFields as $field) {
             $code .= "if (\$request->hasFile('{$field}')) {\n";
-            $code .= "            // Delete old image\n";
-            $code .= "            if (\${$modelLower}->{$field}) {\n";
+            $code .= "            \$validated['{$field}'] = \$request->file('{$field}')->store('uploads', 'public');\n";
+            $code .= "        }\n";
+        }
+
+        return $code;
+    }
+
+    protected function generateImageHandlingForUpdate(array $imageFields, string $modelLower): string
+    {
+        if (empty($imageFields)) {
+            return '// No image fields';
+        }
+
+        $code = "// Handle image uploads (update - delete old images)\n        ";
+        
+        foreach ($imageFields as $field) {
+            $code .= "if (\$request->hasFile('{$field}')) {\n";
+            $code .= "            if (\${$modelLower}->{$field} && \\Illuminate\\Support\\Facades\\Storage::disk('public')->exists(\${$modelLower}->{$field})) {\n";
             $code .= "                \\Illuminate\\Support\\Facades\\Storage::disk('public')->delete(\${$modelLower}->{$field});\n";
             $code .= "            }\n";
             $code .= "            \$validated['{$field}'] = \$request->file('{$field}')->store('uploads', 'public');\n";

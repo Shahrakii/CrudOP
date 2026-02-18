@@ -5,15 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\{{ MODEL }};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class {{ MODEL }}Controller extends Controller
 {
     protected $table = '{{ TABLE }}';
     protected $excludeColumns = ['id', 'created_at', 'updated_at', 'deleted_at'];
 
-    /**
-     * Get filtered columns (excluding system columns)
-     */
     protected function getColumns()
     {
         $all = Schema::getColumnListing($this->table);
@@ -31,68 +29,70 @@ class {{ MODEL }}Controller extends Controller
         return $filtered;
     }
 
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
         ${{ MODEL_PLURAL_CAMEL }} = {{ MODEL }}::paginate(15);
-        return view('{{ MODEL_PLURAL_SNAKE }}.index', ['{{ MODEL_PLURAL_CAMEL }}' => ${{ MODEL_PLURAL_CAMEL }}]);
+        return view('{{ MODEL_PLURAL_SNAKE }}.index', [
+            '{{ MODEL_PLURAL_CAMEL }}' => ${{ MODEL_PLURAL_CAMEL }},
+            'columns' => $this->getColumns()
+        ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create()
     {
         return view('{{ MODEL_PLURAL_SNAKE }}.create', ['columns' => $this->getColumns()]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
         $validated = $request->validate({{ RULES }});
+
+        {{ IMAGE_HANDLING_STORE }}
+
         {{ MODEL }}::create($validated);
 
         return redirect()->route('{{ MODEL_PLURAL_SNAKE }}.index')
             ->with('success', '{{ MODEL }} created successfully!');
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show({{ MODEL }} ${{ MODEL_LOWER }})
     {
-        return view('{{ MODEL_PLURAL_SNAKE }}.show', ['columns' => $this->getColumns(), '{{ MODEL_LOWER }}' => ${{ MODEL_LOWER }}]);
+        return view('{{ MODEL_PLURAL_SNAKE }}.show', [
+            'columns' => $this->getColumns(),
+            '{{ MODEL_LOWER }}' => ${{ MODEL_LOWER }}
+        ]);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit({{ MODEL }} ${{ MODEL_LOWER }})
     {
-        return view('{{ MODEL_PLURAL_SNAKE }}.edit', ['columns' => $this->getColumns(), '{{ MODEL_LOWER }}' => ${{ MODEL_LOWER }}]);
+        return view('{{ MODEL_PLURAL_SNAKE }}.edit', [
+            'columns' => $this->getColumns(),
+            '{{ MODEL_LOWER }}' => ${{ MODEL_LOWER }}
+        ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, {{ MODEL }} ${{ MODEL_LOWER }})
     {
         $validated = $request->validate({{ RULES }});
+
+        {{ IMAGE_HANDLING_UPDATE }}
+
         ${{ MODEL_LOWER }}->update($validated);
 
         return redirect()->route('{{ MODEL_PLURAL_SNAKE }}.index')
             ->with('success', '{{ MODEL }} updated successfully!');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy({{ MODEL }} ${{ MODEL_LOWER }})
     {
+        // Delete image files
+        $imageFields = ['featured_image', 'thumbnail', 'image', 'photo', 'avatar', 'cover', 'banner', 'logo', 'icon', 'picture', 'profile_image'];
+        foreach ($imageFields as $field) {
+            if (${{ MODEL_LOWER }}->{$field} && Storage::disk('public')->exists(${{ MODEL_LOWER }}->{$field})) {
+                Storage::disk('public')->delete(${{ MODEL_LOWER }}->{$field});
+            }
+        }
+
         ${{ MODEL_LOWER }}->delete();
 
         return redirect()->route('{{ MODEL_PLURAL_SNAKE }}.index')

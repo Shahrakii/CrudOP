@@ -55,67 +55,37 @@ class GenerateModelCommand extends Command
             return $this->stubCache[$cacheKey];
         }
 
-        // Try to load from file first
-        $stub = $this->loadStubFile('model/model.stub');
-        
-        if ($stub === null) {
-            $stub = $this->getInlineStub();
-        }
-
+        $stub = $this->loadStub('model');
         $stub = str_replace(['{{ MODEL }}', '{{ NAME }}'], [$name, $name], $stub);
 
         $this->stubCache[$cacheKey] = $stub;
         return $stub;
     }
 
-    protected function loadStubFile(string $path): ?string
+    protected function loadStub(string $path): string
     {
+        // Cache stubs in memory for performance
+        if (isset($this->stubCache[$path])) {
+            return $this->stubCache[$path];
+        }
+
+        // Load from stubs directory - matches your structure
+        // stubs/model/
+        
         $possiblePaths = [
-            __DIR__ . '/../../../resources/stubs/' . $path,
-            base_path('vendor/shahrakii/crudly/resources/stubs/' . $path),
-            dirname(__FILE__, 3) . '/resources/stubs/' . $path,
+            base_path('stubs/' . $path . '.stub'),
+            __DIR__ . '/../../../../stubs/' . $path . '.stub',
+            dirname(__FILE__, 3) . '/stubs/' . $path . '.stub',
         ];
 
         foreach ($possiblePaths as $stubPath) {
             if ($this->files->exists($stubPath)) {
-                return $this->files->get($stubPath);
+                $stub = $this->files->get($stubPath);
+                $this->stubCache[$path] = $stub;
+                return $stub;
             }
         }
 
-        return null;
-    }
-
-    protected function getInlineStub(): string
-    {
-        return '<?php
-
-namespace App\Models;
-
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-
-class {{ NAME }} extends Model
-{
-    use HasFactory;
-
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
-    protected $fillable = [
-        //
-    ];
-
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
-    protected $casts = [
-        \'created_at\' => \'datetime\',
-        \'updated_at\' => \'datetime\',
-    ];
-}';
+        throw new \RuntimeException("❌ Stub not found: stubs/{$path}.stub\n💡 Create it at: stubs/{$path}.stub");
     }
 }

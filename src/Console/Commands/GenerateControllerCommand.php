@@ -56,12 +56,7 @@ class GenerateControllerCommand extends Command
             return $this->stubCache[$cacheKey];
         }
 
-        // Try to load from file first
-        $stub = $this->loadStubFile('controller/controller.stub');
-        
-        if ($stub === null) {
-            $stub = $this->getInlineStub();
-        }
+        $stub = $this->loadStub('controller');
 
         $modelLower = Str::camel($model);
         $modelPlural = Str::camel(Str::pluralStudly($model));
@@ -76,122 +71,30 @@ class GenerateControllerCommand extends Command
         return $stub;
     }
 
-    protected function loadStubFile(string $path): ?string
+    protected function loadStub(string $path): string
     {
+        // Cache stubs in memory for performance
+        if (isset($this->stubCache[$path])) {
+            return $this->stubCache[$path];
+        }
+
+        // Load from stubs directory - matches your structure
+        // stubs/controller/
+        
         $possiblePaths = [
-            __DIR__ . '/../../../resources/stubs/' . $path,
-            base_path('vendor/shahrakii/crudly/resources/stubs/' . $path),
-            dirname(__FILE__, 3) . '/resources/stubs/' . $path,
+            base_path('stubs/' . $path . '.stub'),
+            __DIR__ . '/../../../../stubs/' . $path . '.stub',
+            dirname(__FILE__, 3) . '/stubs/' . $path . '.stub',
         ];
 
         foreach ($possiblePaths as $stubPath) {
             if ($this->files->exists($stubPath)) {
-                return $this->files->get($stubPath);
+                $stub = $this->files->get($stubPath);
+                $this->stubCache[$path] = $stub;
+                return $stub;
             }
         }
 
-        return null;
-    }
-
-    protected function getInlineStub(): string
-    {
-        return '<?php
-
-namespace App\Http\Controllers;
-
-use App\Models\{{ MODEL }};
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
-
-class {{ CONTROLLER_NAME }} extends Controller
-{
-    protected $table;
-    protected $excludeColumns = [\'id\', \'created_at\', \'updated_at\', \'deleted_at\'];
-
-    /**
-     * Get filtered columns (excluding system columns)
-     */
-    protected function getColumns()
-    {
-        $all = Schema::getColumnListing($this->table);
-        $filtered = [];
-        
-        foreach ($all as $col) {
-            if (!in_array($col, $this->excludeColumns)) {
-                $filtered[] = [
-                    \'name\' => $col,
-                    \'general_type\' => \'string\'
-                ];
-            }
-        }
-        
-        return $filtered;
-    }
-
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
-    {
-        ${{ MODEL_PLURAL }} = {{ MODEL }}::paginate(15);
-        return view(\'{{ MODEL_LOWER | pluralize }}.index\', [\'{{ MODEL_PLURAL }}\' => ${{ MODEL_PLURAL }}]);
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        return view(\'create\', [\'columns\' => $this->getColumns()]);
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        $validated = $request->validate([]);
-        {{ MODEL }}::create($validated);
-
-        return redirect()->route(\'index\')->with(\'success\', \'{{ MODEL }} created successfully!\');
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show({{ MODEL }} ${{ MODEL_LOWER }})
-    {
-        return view(\'show\', [\'{{ MODEL_LOWER }}\' => ${{ MODEL_LOWER }}, \'columns\' => $this->getColumns()]);
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit({{ MODEL }} ${{ MODEL_LOWER }})
-    {
-        return view(\'edit\', [\'{{ MODEL_LOWER }}\' => ${{ MODEL_LOWER }}, \'columns\' => $this->getColumns()]);
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, {{ MODEL }} ${{ MODEL_LOWER }})
-    {
-        $validated = $request->validate([]);
-        ${{ MODEL_LOWER }}->update($validated);
-
-        return redirect()->route(\'index\')->with(\'success\', \'{{ MODEL }} updated successfully!\');
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy({{ MODEL }} ${{ MODEL_LOWER }})
-    {
-        ${{ MODEL_LOWER }}->delete();
-
-        return redirect()->route(\'index\')->with(\'success\', \'{{ MODEL }} deleted successfully!\');
-    }
-}';
+        throw new \RuntimeException("❌ Stub not found: stubs/{$path}.stub\n💡 Create it at: stubs/{$path}.stub");
     }
 }
