@@ -3,20 +3,20 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Crudly Configuration
+    | CRUDLY Configuration
     |--------------------------------------------------------------------------
     |
-    | Configuration for the Crudly CRUD generator package
+    | Configure the Crudly CRUD generator package
     |
     */
 
-    // Route prefix for Crudly endpoints
+    // Route prefix
     'route_prefix' => env('CRUDLY_ROUTE_PREFIX', 'crudly'),
 
-    // Middleware to apply to Crudly routes
+    // Middleware for generated routes
     'middleware' => env('CRUDLY_MIDDLEWARE', ['web']),
 
-    // Global filters - columns to exclude from all CRUD operations
+    // Columns to exclude from all CRUD operations
     'global_filters' => [
         'id',
         'created_at',
@@ -26,7 +26,8 @@ return [
 
     // Table-specific column filters
     'table_filters' => [
-        // 'users' => ['password', 'remember_token', 'api_token'],
+        // Example:
+        // 'users' => ['password_reset_token'],
     ],
 
     // Tables to exclude from generation
@@ -39,10 +40,10 @@ return [
         'sessions',
     ],
 
-    // Pagination
+    // Pagination items per page
     'pagination' => env('CRUDLY_PAGINATION', 15),
 
-    // CSS Framework (tailwind or bootstrap)
+    // CSS framework
     'css_framework' => env('CRUDLY_CSS_FRAMEWORK', 'tailwind'),
 
     // View paths
@@ -53,18 +54,24 @@ return [
         'show' => 'crudly::crud.show',
     ],
 
-    // Model namespace
+    // Namespaces
     'model_namespace' => 'App\\Models',
-
-    // Controller namespace
     'controller_namespace' => 'App\\Http\\Controllers',
 
-    // Generate routes automatically
+    // Auto-generate routes
     'auto_routes' => env('CRUDLY_AUTO_ROUTES', false),
 
-    // Generate factories
+    // Generate factories for testing
     'generate_factories' => env('CRUDLY_GENERATE_FACTORIES', true),
 
     // Generate migrations
     'generate_migrations' => env('CRUDLY_GENERATE_MIGRATIONS', false),
+
+    // Image upload configuration
+    'image' => [
+        'disk' => 'public',
+        'path' => 'uploads',
+        'allowed_mimes' => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+        'max_size' => 2048, // KB
+    ],
 ];
