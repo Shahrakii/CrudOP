@@ -19,6 +19,7 @@ class GenerateCrudCommand extends Command
 
     protected $files;
     protected $crudly;
+    protected $stubCache = [];
 
     public function __construct(Filesystem $files)
     {
@@ -29,35 +30,26 @@ class GenerateCrudCommand extends Command
 
     public function handle()
     {
+        $startTime = microtime(true);
         $model = $this->argument('model');
         $table = $this->option('table') ?? Str::snake(Str::pluralStudly($model));
         $force = $this->option('force');
 
         if (!$this->crudly->tableExists($table)) {
-            $this->error("Table '{$table}' does not exist!");
+            $this->error("❌ Table '{$table}' does not exist!");
             return 1;
         }
 
         $this->info("🚀 Generating CRUD for {$model}...\n");
 
-        if ($this->generateModel($model, $table, $force)) {
-            $this->info("✅ Generated Model: {$model}");
-        }
+        $generated = [];
+        $generated['model'] = $this->generateModel($model, $table, $force);
+        $generated['controller'] = $this->generateController($model, $table, $force);
+        $generated['views'] = $this->generateViews($model, $table, $force);
 
-        if ($this->generateController($model, $table, $force)) {
-            $this->info("✅ Generated Controller: {$model}Controller");
-        }
-
-        if ($this->generateViews($model, $table, $force)) {
-            $this->info("✅ Generated Views");
-        }
-
-        if ($this->confirm('Generate migration file?')) {
-            $this->call('make:migration', [
-                'name' => "create_{$table}_table",
-                '--create' => $table,
-            ]);
-        }
+        if ($generated['model']) $this->info("✅ Generated Model: {$model}");
+        if ($generated['controller']) $this->info("✅ Generated Controller: {$model}Controller");
+        if ($generated['views']) $this->info("✅ Generated Views (4 files)");
 
         if ($this->option('routes') || $this->confirm('Add routes to routes/web.php?')) {
             if ($this->generateRoutes($model)) {
@@ -65,8 +57,8 @@ class GenerateCrudCommand extends Command
             }
         }
 
-        $this->info("\n✨ CRUD generation complete!");
-        $this->info("Run: php artisan serve");
+        $duration = number_format(microtime(true) - $startTime, 2);
+        $this->info("\n✨ CRUD generation complete in {$duration}s!");
         $this->info("📝 Visit: http://localhost:8000/" . Str::snake(Str::pluralStudly($model)));
 
         return 0;
@@ -77,7 +69,7 @@ class GenerateCrudCommand extends Command
         $path = app_path("Models/{$model}.php");
 
         if ($this->files->exists($path) && !$force) {
-            $this->warn("Model {$model} already exists. Use --force to overwrite.");
+            $this->warn("⚠️  Model {$model} already exists. Use --force to overwrite.");
             return false;
         }
 
@@ -89,7 +81,6 @@ class GenerateCrudCommand extends Command
             [$model, $table, $fillable], $stub);
         
         $this->files->put($path, $stub);
-
         return true;
     }
 
@@ -98,7 +89,7 @@ class GenerateCrudCommand extends Command
         $path = app_path("Http/Controllers/{$model}Controller.php");
 
         if ($this->files->exists($path) && !$force) {
-            $this->warn("Controller {$model}Controller already exists. Use --force to overwrite.");
+            $this->warn("⚠️  Controller {$model}Controller already exists. Use --force to overwrite.");
             return false;
         }
 
@@ -118,7 +109,6 @@ class GenerateCrudCommand extends Command
         );
 
         $this->files->put($path, $stub);
-
         return true;
     }
 
@@ -127,7 +117,7 @@ class GenerateCrudCommand extends Command
         $viewPath = resource_path("views/".Str::snake(Str::pluralStudly($model)));
 
         if ($this->files->exists($viewPath) && !$force) {
-            $this->warn("Views already exist. Use --force to overwrite.");
+            $this->warn("⚠️  Views already exist. Use --force to overwrite.");
             return false;
         }
 
@@ -138,7 +128,7 @@ class GenerateCrudCommand extends Command
         $modelPlural = Str::snake(Str::pluralStudly($model));
         $modelPluralCamel = Str::camel(Str::pluralStudly($model));
 
-        // Index view
+        // Pre-generate headers and data for performance
         $columnHeaders = implode("\n                        ", array_map(fn($col) => 
             "<th class=\"px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider\">" . 
             Str::of($col['name'])->replace('_', ' ')->title() . "</th>", 
@@ -150,20 +140,25 @@ class GenerateCrudCommand extends Command
             $columns
         ));
 
+        // Generate form and display fields in bulk
+        $formFields = implode("\n\n        ", array_map(
+            fn($col) => $this->generateFormField($col['name'], $modelLower), 
+            $columns
+        ));
+
+        $displayFields = implode("\n\n        ", array_map(
+            fn($col) => $this->generateDisplayField($col['name'], $modelLower), 
+            $columns
+        ));
+
+        // Index view
         $stub = $this->loadStub('views/index.stub');
         $stub = str_replace(
             ['{{ MODEL }}', '{{ MODEL_PLURAL }}', '{{ MODEL_LOWER_PLURAL }}', '{{ COLUMN_HEADERS }}', '{{ COLUMN_DATA }}', '{{ MODEL_PLURAL_SNAKE }}', '{{ MODEL_PLURAL_CAMEL }}', '{{ MODEL_LOWER }}'],
             [$model, Str::plural($model), Str::plural(Str::lower($model)), $columnHeaders, $columnData, $modelPlural, $modelPluralCamel, $modelLower],
             $stub
         );
-
         $this->files->put("$viewPath/index.blade.php", $stub);
-
-        // Create/Edit form fields
-        $formFields = implode("\n\n        ", array_map(fn($col) => 
-            $this->generateFormField($col['name'], $modelLower), 
-            $columns
-        ));
 
         // Create view
         $createStub = $this->loadStub('views/create.stub');
@@ -183,12 +178,7 @@ class GenerateCrudCommand extends Command
         );
         $this->files->put("$viewPath/edit.blade.php", $editStub);
 
-        // Show view - display fields
-        $displayFields = implode("\n\n        ", array_map(fn($col) => 
-            $this->generateDisplayField($col['name'], $modelLower), 
-            $columns
-        ));
-
+        // Show view
         $showStub = $this->loadStub('views/show.stub');
         $showStub = str_replace(
             ['{{ MODEL }}', '{{ MODEL_PLURAL_SNAKE }}', '{{ MODEL_LOWER }}', '{{ DISPLAY_FIELDS }}'],
@@ -226,6 +216,11 @@ class GenerateCrudCommand extends Command
 
     protected function loadStub(string $path): string
     {
+        // Cache stubs in memory for performance
+        if (isset($this->stubCache[$path])) {
+            return $this->stubCache[$path];
+        }
+
         // Try multiple stub paths
         $possiblePaths = [
             __DIR__ . '/../../../resources/stubs/' . $path,
@@ -235,11 +230,16 @@ class GenerateCrudCommand extends Command
         
         foreach ($possiblePaths as $stubPath) {
             if ($this->files->exists($stubPath)) {
-                return $this->files->get($stubPath);
+                $stub = $this->files->get($stubPath);
+                $this->stubCache[$path] = $stub;
+                return $stub;
             }
         }
         
-        return $this->getInlineStub($path);
+        // Fallback to inline stubs
+        $stub = $this->getInlineStub($path);
+        $this->stubCache[$path] = $stub;
+        return $stub;
     }
 
     protected function getInlineStub(string $stubName): string
@@ -265,6 +265,7 @@ class {{ MODEL }} extends Model
         \'updated_at\' => \'datetime\',
     ];
 }',
+
             'controller/controller.stub' => '<?php
 
 namespace App\Http\Controllers;
@@ -342,10 +343,11 @@ class {{ MODEL }}Controller extends Controller
             ->with(\'success\', \'{{ MODEL }} deleted successfully!\');
     }
 }',
+
             'views/index.stub' => '@extends(\'layouts.app\')
 
 @section(\'page-title\', \'{{ MODEL_PLURAL }}\')
-@section(\'page-subtitle\', \'Manage all {{ MODEL_LOWER_PLURAL }} in your system\')
+@section(\'page-subtitle\', \'Manage all {{ MODEL_LOWER_PLURAL }}\')
 
 @section(\'content\')
 <div class="p-6">
@@ -398,7 +400,6 @@ class {{ MODEL }}Controller extends Controller
                                 <div class="flex flex-col items-center gap-3">
                                     <i class="fas fa-inbox text-4xl text-gray-600"></i>
                                     <p class="text-gray-400 font-medium">No {{ MODEL_LOWER_PLURAL }} found</p>
-                                    <a href="{{ route(\'{{ MODEL_PLURAL_SNAKE }}.create\') }}" class="text-blue-400 hover:text-blue-300 text-sm">Create one now →</a>
                                 </div>
                             </td>
                         </tr>
@@ -415,10 +416,11 @@ class {{ MODEL }}Controller extends Controller
     @endif
 </div>
 @endsection',
+
             'views/create.stub' => '@extends(\'layouts.app\')
 
 @section(\'page-title\', \'Create {{ MODEL }}\')
-@section(\'page-subtitle\', \'Add a new {{ MODEL_LOWER }} to your system\')
+@section(\'page-subtitle\', \'Add new {{ MODEL_LOWER }}\')
 
 @section(\'content\')
 <div class="p-6 max-w-2xl">
@@ -440,6 +442,7 @@ class {{ MODEL }}Controller extends Controller
     </form>
 </div>
 @endsection',
+
             'views/edit.stub' => '@extends(\'layouts.app\')
 
 @section(\'page-title\', \'Edit {{ MODEL }}\')
@@ -466,6 +469,7 @@ class {{ MODEL }}Controller extends Controller
     </form>
 </div>
 @endsection',
+
             'views/show.stub' => '@extends(\'layouts.app\')
 
 @section(\'page-title\', \'{{ MODEL }} Details\')
@@ -497,6 +501,7 @@ class {{ MODEL }}Controller extends Controller
     </div>
 </div>
 @endsection',
+
             'views/form-field.stub' => '<div class="space-y-2">
     <label for="{{ FIELD_NAME }}" class="block text-sm font-semibold text-gray-300">
         {{ FIELD_LABEL }} <span class="text-red-400">*</span>
@@ -517,6 +522,7 @@ class {{ MODEL }}Controller extends Controller
         </p>
     @enderror
 </div>',
+
             'views/display-field.stub' => '<div class="space-y-1 p-4 bg-gray-700/50 rounded-lg">
     <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">{{ FIELD_LABEL }}</p>
     <p class="text-lg text-gray-100 font-medium">{{ ${{ MODEL_LOWER }}->{{ FIELD_NAME }} ?? \'N/A\' }}</p>
@@ -541,7 +547,7 @@ class {{ MODEL }}Controller extends Controller
         $content = $this->files->get($routesPath);
 
         if (strpos($content, $routeContent) !== false) {
-            $this->warn("Routes already exist.");
+            $this->warn("⚠️  Routes already exist.");
             return false;
         }
 
