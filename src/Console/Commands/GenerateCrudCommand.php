@@ -7,6 +7,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use Shahrakii\Crudly\Crudly;
 use Shahrakii\Crudly\Utilities\ImageHandler;
+use Shahrakii\Crudly\Utilities\RelationshipDetector;
 
 class GenerateCrudCommand extends Command
 {
@@ -22,6 +23,7 @@ class GenerateCrudCommand extends Command
     protected $crudly;
     protected $stubCache = [];
     protected $imageFields = [];
+    protected $relationships = [];
 
     public function __construct(Filesystem $files)
     {
@@ -44,8 +46,17 @@ class GenerateCrudCommand extends Command
 
         $this->info("🚀 Generating CRUD for {$model}...\n");
 
+        // Detect relationships
+        $detector = new RelationshipDetector($table);
+        $this->relationships = $detector->detectRelationships();
+
         $columns = $this->crudly->getFilteredColumns($table);
         $this->imageFields = ImageHandler::getImageFields($columns);
+
+        if (!empty($this->relationships)) {
+            $relationshipNames = implode(', ', array_map(fn($r) => $r['method'], $this->relationships));
+            $this->info("🔗 Found relationships: {$relationshipNames}");
+        }
 
         if (!empty($this->imageFields)) {
             $this->info("📸 Found image fields: " . implode(', ', $this->imageFields));
@@ -59,10 +70,6 @@ class GenerateCrudCommand extends Command
         if ($generated['model']) $this->info("✅ Generated Model: {$model}");
         if ($generated['controller']) $this->info("✅ Generated Controller: {$model}Controller");
         if ($generated['views']) $this->info("✅ Generated Views (4 files)");
-
-        if (!empty($this->imageFields)) {
-            $this->info("\n💡 Image upload handling added. Update your controller manually if needed.");
-        }
 
         if ($this->option('routes') || $this->confirm('Add routes to routes/web.php?')) {
             if ($this->generateRoutes($model)) {
@@ -89,9 +96,14 @@ class GenerateCrudCommand extends Command
         $columns = $this->crudly->getFilteredColumns($table);
         $fillable = var_export(array_map(fn($col) => $col['name'], $columns), true);
         
+        $relationshipMethods = $this->generateRelationshipMethods();
+        
         $stub = $this->loadStub('model');
-        $stub = str_replace(['{{ MODEL }}', '{{ TABLE }}', '{{ FILLABLE }}'], 
-            [$model, $table, $fillable], $stub);
+        $stub = str_replace(
+            ['{{ MODEL }}', '{{ TABLE }}', '{{ FILLABLE }}', '{{ RELATIONSHIPS }}'],
+            [$model, $table, $fillable, $relationshipMethods],
+            $stub
+        );
         
         $this->files->put($path, $stub);
         return true;
@@ -109,7 +121,6 @@ class GenerateCrudCommand extends Command
         $columns = $this->crudly->getFilteredColumns($table);
         $rules = $this->crudly->getValidationRules($table);
         
-        // Add image validation rules
         foreach ($this->imageFields as $imageField) {
             $rules[$imageField] = 'nullable|image|mimes:jpeg,png,gif,webp|max:2048';
         }
@@ -120,16 +131,14 @@ class GenerateCrudCommand extends Command
         $modelPluralSnake = Str::snake(Str::pluralStudly($model));
         $modelLower = Str::camel($model);
 
-        // Generate image handling for STORE (no delete)
         $imageHandlingStore = $this->generateImageHandlingForStore($this->imageFields);
-        
-        // Generate image handling for UPDATE (with delete)
         $imageHandlingUpdate = $this->generateImageHandlingForUpdate($this->imageFields, $modelLower);
+        $eagerLoadingChain = $this->generateEagerLoadingChain();  // ← NEW
 
         $stub = $this->loadStub('controller');
         $stub = str_replace(
-            ['{{ MODEL }}', '{{ TABLE }}', '{{ RULES }}', '{{ MODEL_PLURAL_CAMEL }}', '{{ MODEL_PLURAL_SNAKE }}', '{{ MODEL_LOWER }}', '{{ IMAGE_HANDLING_STORE }}', '{{ IMAGE_HANDLING_UPDATE }}'],
-            [$model, $table, $rulesExport, $modelPlural, $modelPluralSnake, $modelLower, $imageHandlingStore, $imageHandlingUpdate],
+            ['{{ MODEL }}', '{{ TABLE }}', '{{ RULES }}', '{{ MODEL_PLURAL_CAMEL }}', '{{ MODEL_PLURAL_SNAKE }}', '{{ MODEL_LOWER }}', '{{ IMAGE_HANDLING_STORE }}', '{{ IMAGE_HANDLING_UPDATE }}', '{{ EAGER_LOADING_CHAIN }}'],
+            [$model, $table, $rulesExport, $modelPlural, $modelPluralSnake, $modelLower, $imageHandlingStore, $imageHandlingUpdate, $eagerLoadingChain],
             $stub
         );
 
@@ -153,7 +162,6 @@ class GenerateCrudCommand extends Command
         $modelPlural = Str::snake(Str::pluralStudly($model));
         $modelPluralCamel = Str::camel(Str::pluralStudly($model));
 
-        // Pre-generate headers and data for performance
         $columnHeaders = implode("\n                        ", array_map(fn($col) => 
             "<th class=\"px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider\">" . 
             Str::of($col['name'])->replace('_', ' ')->title() . "</th>", 
@@ -165,7 +173,6 @@ class GenerateCrudCommand extends Command
             $columns
         ));
 
-        // Generate form and display fields in bulk
         $formFields = implode("\n\n        ", array_map(
             fn($col) => $this->generateFormField($col['name'], $modelLower), 
             $columns
@@ -217,7 +224,30 @@ class GenerateCrudCommand extends Command
 
     protected function generateFormField(string $fieldName, string $modelLower): string
     {
-        // Use image stub for image fields
+        // Check if it's a foreign key
+        $isForeignKey = Str::endsWith($fieldName, '_id');
+        
+        if ($isForeignKey) {
+            $stub = $this->loadStub('view/select-field');
+            $relationshipMethod = Str::camel(Str::replaceLast('_id', '', $fieldName));
+            $relationshipModel = null;
+            
+            foreach ($this->relationships as $rel) {
+                if ($rel['method'] === $relationshipMethod) {
+                    $relationshipModel = $rel['model'];
+                    break;
+                }
+            }
+            
+            $label = Str::of($fieldName)->replace('_', ' ')->title();
+            
+            return str_replace(
+                ['{{ FIELD_NAME }}', '{{ FIELD_LABEL }}', '{{ RELATIONSHIP_METHOD }}', '{{ RELATIONSHIP_MODEL }}', '{{ MODEL_LOWER }}'],
+                [$fieldName, $label, $relationshipMethod, $relationshipModel ?? 'Model', $modelLower],
+                $stub
+            );
+        }
+        
         if (ImageHandler::isImageField($fieldName)) {
             $stub = $this->loadStub('view/image-field');
         } else {
@@ -235,7 +265,23 @@ class GenerateCrudCommand extends Command
 
     protected function generateDisplayField(string $fieldName, string $modelLower): string
     {
-        // Use image display stub for image fields
+        // Check if it's a foreign key
+        $isForeignKey = Str::endsWith($fieldName, '_id');
+        
+        if ($isForeignKey) {
+            $relationshipMethod = Str::camel(Str::replaceLast('_id', '', $fieldName));
+            $label = Str::of($fieldName)->replace('_', ' ')->title();
+            
+            return "
+<div class=\"space-y-1 p-4 bg-gray-700/50 rounded-lg border border-gray-600\">
+    <p class=\"text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2\">
+        <i class=\"fas fa-link\"></i>
+        {$label}
+    </p>
+    <p class=\"text-lg text-gray-100 font-medium\">{{ \${$modelLower}->{$relationshipMethod}->name ?? 'N/A' }}</p>
+</div>";
+        }
+        
         if (ImageHandler::isImageField($fieldName)) {
             $stub = $this->loadStub('view/image-display');
         } else {
@@ -253,12 +299,10 @@ class GenerateCrudCommand extends Command
 
     protected function loadStub(string $path): string
     {
-        // Cache stubs in memory for performance
         if (isset($this->stubCache[$path])) {
             return $this->stubCache[$path];
         }
 
-        // Load from stubs directory - matches your structure
         $possiblePaths = [
             base_path('stubs/' . $path . '.stub'),
             __DIR__ . '/../../../../stubs/' . $path . '.stub',
@@ -276,6 +320,36 @@ class GenerateCrudCommand extends Command
         throw new \RuntimeException("❌ Stub not found: stubs/{$path}.stub\n💡 Create it at: stubs/{$path}.stub");
     }
 
+    protected function generateRelationshipMethods(): string
+    {
+        if (empty($this->relationships)) {
+            return '// No relationships detected';
+        }
+
+        $code = "\n    // Relationships\n";
+        
+        foreach ($this->relationships as $rel) {
+            if ($rel['type'] === 'belongsTo') {
+                $code .= "    public function {$rel['method']}()\n";
+                $code .= "    {\n";
+                $code .= "        return \$this->belongsTo({$rel['model']}::class);\n";
+                $code .= "    }\n\n";
+            }
+        }
+
+        return $code;
+    }
+
+    protected function generateEagerLoading(): string
+    {
+        if (empty($this->relationships)) {
+            return '::';
+        }
+
+        $relations = array_map(fn($r) => "'{$r['method']}'", $this->relationships);
+        return "::with(" . implode(", ", $relations) . ")->";
+    }
+
     protected function generateImageHandlingForStore(array $imageFields): string
     {
         if (empty($imageFields)) {
@@ -291,6 +365,16 @@ class GenerateCrudCommand extends Command
         }
 
         return $code;
+    }
+
+    protected function generateEagerLoadingChain(): string
+    {
+        if (empty($this->relationships)) {
+            return '::latest()->paginate(15)';
+        }
+
+        $relations = array_map(fn($r) => "'{$r['method']}'", $this->relationships);
+        return '::with(' . implode(", ", $relations) . ')->latest()->paginate(15)';
     }
 
     protected function generateImageHandlingForUpdate(array $imageFields, string $modelLower): string

@@ -31,7 +31,7 @@ class {{ MODEL }}Controller extends Controller
 
     public function index()
     {
-        ${{ MODEL_PLURAL_CAMEL }} = {{ MODEL }}::paginate(15);
+        ${{ MODEL_PLURAL_CAMEL }} = {{ MODEL }}{{ EAGER_LOADING_CHAIN }};
         return view('{{ MODEL_PLURAL_SNAKE }}.index', [
             '{{ MODEL_PLURAL_CAMEL }}' => ${{ MODEL_PLURAL_CAMEL }},
             'columns' => $this->getColumns()
